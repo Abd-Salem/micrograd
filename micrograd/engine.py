@@ -2,17 +2,38 @@
 class Value:
     """ stores a single scalar value and its gradient """
 
-    def __init__(self, data, _children=(), _op=''):
+    def __init__(self, data, _children=(), _op='', label=''):
         self.data = data
         self.grad = 0
         # internal variables used for autograd graph construction
         self._backward = lambda: None
         self._prev = set(_children)
         self._op = _op # the op that produced this node, for graphviz / debugging / etc
+        self.label = label # for graphviz
+        self.require_grad = False
+
+
+    @staticmethod
+    def _to_value(x):
+        '''
+        type checking for wrapping
+        '''
+        if isinstance(x ,Value):
+            return x
+        try:
+            return Value(x, label=f'({float(x):.2f})')
+        except Exception:
+            raise TypeError(f"Unsupported type: {type(x)}")
+
 
     def __add__(self, other):
-        other = other if isinstance(other, Value) else Value(other)
-        out = Value(self.data + other.data, (self, other), '+')
+        other = Value._to_value(other)
+        out = Value(self.data + other.data, _children=(self, other),_op='+',
+                    label=f'{self.label}+{other.label}' if self.label and other.label else '')
+
+        out.require_grad = self.require_grad or other.require_grad
+        if not out.require_grad:
+            return out
 
         def _backward():
             self.grad += out.grad
@@ -22,8 +43,13 @@ class Value:
         return out
 
     def __mul__(self, other):
-        other = other if isinstance(other, Value) else Value(other)
-        out = Value(self.data * other.data, (self, other), '*')
+        other = Value._to_value(other)
+        out = Value(self.data * other.data, _children=(self, other),_op='*',
+                    label=f'{self.label}*{other.label}' if self.label and other.label else '')
+
+        out.require_grad = self.require_grad or other.require_grad
+        if not out.require_grad:
+            return out
 
         def _backward():
             self.grad += other.data * out.grad
@@ -34,7 +60,12 @@ class Value:
 
     def __pow__(self, other):
         assert isinstance(other, (int, float)), "only supporting int/float powers for now"
-        out = Value(self.data**other, (self,), f'**{other}')
+        out = Value(self.data**other, _children=(self,), _op=f'**{other}',
+                    label=f'{self.label}**{other}' if self.label else 'power')
+
+        out.require_grad = self.require_grad
+        if not out.require_grad:
+            return out
 
         def _backward():
             self.grad += (other * self.data**(other-1)) * out.grad
@@ -43,7 +74,12 @@ class Value:
         return out
 
     def relu(self):
-        out = Value(0 if self.data < 0 else self.data, (self,), 'ReLU')
+        out = Value(0.0 if self.data < 0 else self.data, _children=(self,), _op='ReLU',
+                    label=f'ReLU({self.label})' if self.label else 'ReLU')
+
+        out.require_grad = self.require_grad
+        if not out.require_grad:
+            return out
 
         def _backward():
             self.grad += (out.data > 0) * out.grad
@@ -75,13 +111,22 @@ class Value:
     def __radd__(self, other): # other + self
         return self + other
 
+    def __iadd__(self, other):
+        return self + other
+
     def __sub__(self, other): # self - other
         return self + (-other)
 
     def __rsub__(self, other): # other - self
         return other + (-self)
 
+    def __isub__(self, other):
+        return self + (-other)
+
     def __rmul__(self, other): # other * self
+        return self * other
+
+    def __imul__(self, other):
         return self * other
 
     def __truediv__(self, other): # self / other
@@ -89,6 +134,9 @@ class Value:
 
     def __rtruediv__(self, other): # other / self
         return other * self**-1
+
+    def __itruediv__(self, other):
+        return self * (other**-1)
 
     def __repr__(self):
         return f"Value(data={self.data}, grad={self.grad})"
