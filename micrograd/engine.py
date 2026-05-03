@@ -68,6 +68,32 @@ class Value:
 
         return out
 
+    def exp(self):
+        out = Value(np.exp(np.clip(self.data, -100, 100)), _children=(self, ), _op='exp',
+                    label=f'exp({self.label})' if self.label else 'exp')
+
+        out.require_grad = self.require_grad
+
+        def _backward():
+            self.grad += out.data * out.grad
+
+        out._backward = _backward
+        return out
+
+
+    def log(self):
+        eps = 1e-12
+
+        out = Value(np.log(self.data + eps), _children=(self, ), _op='log',
+                    label=f'log({self.label})' if self.label else 'log')
+        out.require_grad = self.require_grad
+
+        def _backward():
+            self.grad += (1/ (self.data + eps)) * out.grad
+
+        out._backward = _backward
+        return out
+
     def relu(self):
         out = Value(0.0 if self.data < 0 else self.data, _children=(self,), _op='ReLU',
                     label=f'ReLU({self.label})' if self.label else 'ReLU')
@@ -84,6 +110,7 @@ class Value:
     def tanh(self):
         t = np.tanh(self.data)
         out = Value(t, _children=(self, ), _op='tanh', label=f'tanh({self.label})' if self.label else '')
+
         out.require_grad = self.require_grad
 
         def _backward():
