@@ -1,3 +1,4 @@
+import numpy as np
 
 class Value:
     """ stores a single scalar value and its gradient """
@@ -77,6 +78,31 @@ class Value:
             self.grad += (out.data > 0) * out.grad
         out._backward = _backward
 
+        return out
+
+
+    def tanh(self):
+        t = np.tanh(self.data)
+        out = Value(t, _children=(self, ), _op='tanh', label=f'tanh({self.label})' if self.label else '')
+        out.require_grad = self.require_grad
+
+        def _backward():
+            if self.require_grad:
+                self.grad += (1 - t**2) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def sigmoid(self):
+        s = 1 / (1 + np.exp(-self.data))
+        out = Value(s, _children=(self,), _op='sigmoid', label=f'sigmoid({self.label})' if self.label else '')
+        out.require_grad = self.require_grad
+
+        def _backward():
+            if self.require_grad:
+                self.grad += s * (1 - s) * out.grad
+
+        out._backward = _backward
         return out
 
     def backward(self):
