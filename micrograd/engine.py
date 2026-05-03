@@ -2,7 +2,7 @@
 class Value:
     """ stores a single scalar value and its gradient """
 
-    def __init__(self, data, _children=(), _op='', label=''):
+    def __init__(self, data, _children=(), _op='', label='', require_grad=False):
         self.data = data
         self.grad = 0
         # internal variables used for autograd graph construction
@@ -10,7 +10,7 @@ class Value:
         self._prev = set(_children)
         self._op = _op # the op that produced this node, for graphviz / debugging / etc
         self.label = label # for graphviz
-        self.require_grad = False
+        self.require_grad = require_grad
 
 
     @staticmethod
@@ -32,8 +32,6 @@ class Value:
                     label=f'{self.label}+{other.label}' if self.label and other.label else '')
 
         out.require_grad = self.require_grad or other.require_grad
-        if not out.require_grad:
-            return out
 
         def _backward():
             self.grad += out.grad
@@ -48,8 +46,6 @@ class Value:
                     label=f'{self.label}*{other.label}' if self.label and other.label else '')
 
         out.require_grad = self.require_grad or other.require_grad
-        if not out.require_grad:
-            return out
 
         def _backward():
             self.grad += other.data * out.grad
@@ -64,8 +60,6 @@ class Value:
                     label=f'{self.label}**{other}' if self.label else 'power')
 
         out.require_grad = self.require_grad
-        if not out.require_grad:
-            return out
 
         def _backward():
             self.grad += (other * self.data**(other-1)) * out.grad
@@ -78,8 +72,6 @@ class Value:
                     label=f'ReLU({self.label})' if self.label else 'ReLU')
 
         out.require_grad = self.require_grad
-        if not out.require_grad:
-            return out
 
         def _backward():
             self.grad += (out.data > 0) * out.grad
@@ -103,7 +95,8 @@ class Value:
         # go one variable at a time and apply the chain rule to get its gradient
         self.grad = 1
         for v in reversed(topo):
-            v._backward()
+            if v.require_grad:
+                v._backward()
 
     def __neg__(self): # -self
         return self * -1
