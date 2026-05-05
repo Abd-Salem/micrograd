@@ -16,6 +16,9 @@ def bce_with_logits(target, logits):
     '''
     achieving numerical stability by passing logits
     '''
+    target = Value._to_value(target)
+    target.require_grad = False     # for safety
+
     max_value = logits.relu()          # apply max(x,0)
     abs_logits = (-logits).relu() + logits.relu()       #  |x|
     log_term = (1 + (-abs_logits).exp()).log()          # log(1 + e**-|logits|)
