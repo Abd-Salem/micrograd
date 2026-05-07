@@ -1,6 +1,5 @@
 from engine import Value
-
-
+import numpy as np
 
 def mse(gt, pred):
     '''
@@ -39,6 +38,9 @@ def bce_with_logits(target, logits):
 
 
 def softmax(logits):
+    '''
+    softmax function
+    '''
     max_logit = logits[0]
     for logit in logits[1:]:
         if logit.data > max_logit.data:
@@ -59,6 +61,9 @@ def cross_entropy(targets, probs):
     '''
     cross entropy with probabilities
     '''
+    if not isinstance(targets, np.ndarray):
+        targets = np.array(targets)
+
     target_idx = targets.argmax()
     return -probs[target_idx].log()
 
@@ -69,6 +74,9 @@ def cross_entropy_with_logits(targets, logits):
     achieving numerical stability by passing logits
     '''
 
+    if not isinstance(targets, np.ndarray):
+        targets = np.array(targets)
+
     # get target index
     target_idx = targets.argmax()
 
@@ -78,8 +86,8 @@ def cross_entropy_with_logits(targets, logits):
         if logit.data > max_logit.data:
             max_logit = logit
 
-    # shift logit and then apply exp for exp summation
-    exp_sum = Value(0.0)
+    # shift each logit , apply exp and calculate sum
+    exp_sum = 0.0       # if exp_sum is initiated to be Value(0.0) this causes an error that confused me.
     for logit in logits:
         exp_sum += (logit - max_logit).exp()
 
