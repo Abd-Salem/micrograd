@@ -5,13 +5,13 @@ class Value:
 
     def __init__(self, data, _children=(), _op='', label='', require_grad=False):
         self.data = data
-        self.grad = 0
+        self.grad = 0.0
+        self.require_grad = require_grad    # gradient check
         # internal variables used for autograd graph construction
         self._backward = lambda: None
         self._prev = set(_children)
         self._op = _op # the op that produced this node, for graphviz / debugging / etc
         self.label = label # for graphviz
-        self.require_grad = require_grad
 
 
     @staticmethod
@@ -22,7 +22,8 @@ class Value:
         if isinstance(x ,Value):
             return x
         try:
-            return Value(x, label=f'({float(x):.2f})')
+            return Value(x, label=f'')
+            # return Value(x, label=f'{x:.3f}') # this will show all labels in the graph
         except Exception:
             raise TypeError(f"Unsupported type: {type(x)}")
 
@@ -35,8 +36,11 @@ class Value:
         out.require_grad = self.require_grad or other.require_grad
 
         def _backward():
-            self.grad += out.grad
-            other.grad += out.grad
+            if self.require_grad:
+                self.grad += out.grad
+
+            if other.require_grad:
+                other.grad += out.grad
         out._backward = _backward
 
         return out
@@ -49,8 +53,11 @@ class Value:
         out.require_grad = self.require_grad or other.require_grad
 
         def _backward():
-            self.grad += other.data * out.grad
-            other.grad += self.data * out.grad
+            if self.require_grad:
+                self.grad += other.data * out.grad
+
+            if other.require_grad:
+                other.grad += self.data * out.grad
         out._backward = _backward
 
         return out
@@ -63,19 +70,23 @@ class Value:
         out.require_grad = self.require_grad
 
         def _backward():
-            self.grad += (other * self.data**(other-1)) * out.grad
+            if self.require_grad:
+                self.grad += (other * self.data**(other-1)) * out.grad
         out._backward = _backward
 
         return out
 
     def exp(self):
-        out = Value(np.exp(np.clip(self.data, -100, 100)), _children=(self, ), _op='exp',
+        data = np.exp(np.clip(self.data, -100, 100))
+
+        out = Value(float(data), _children=(self, ), _op='exp',
                     label=f'exp({self.label})' if self.label else 'exp')
 
         out.require_grad = self.require_grad
 
         def _backward():
-            self.grad += out.data * out.grad
+            if self.require_grad:
+                self.grad += out.data * out.grad
 
         out._backward = _backward
         return out
@@ -83,13 +94,15 @@ class Value:
 
     def log(self):
         eps = 1e-12
+        data = np.log(self.data + eps)
 
-        out = Value(np.log(self.data + eps), _children=(self, ), _op='log',
+        out = Value(float(data), _children=(self, ), _op='log',
                     label=f'log({self.label})' if self.label else 'log')
         out.require_grad = self.require_grad
 
         def _backward():
-            self.grad += (1/ (self.data + eps)) * out.grad
+            if self.require_grad:
+                self.grad += (1/ (self.data + eps)) * out.grad
 
         out._backward = _backward
         return out
@@ -97,11 +110,11 @@ class Value:
     def relu(self):
         out = Value(0.0 if self.data < 0 else self.data, _children=(self,), _op='ReLU',
                     label=f'ReLU({self.label})' if self.label else 'ReLU')
-
         out.require_grad = self.require_grad
 
         def _backward():
-            self.grad += (out.data > 0) * out.grad
+            if self.require_grad:
+                self.grad += (out.data > 0) * out.grad
         out._backward = _backward
 
         return out
@@ -109,8 +122,8 @@ class Value:
 
     def tanh(self):
         t = np.tanh(self.data)
-        out = Value(t, _children=(self, ), _op='tanh', label=f'tanh({self.label})' if self.label else '')
 
+        out = Value(float(t), _children=(self, ), _op='tanh', label=f'tanh({self.label})' if self.label else '')
         out.require_grad = self.require_grad
 
         def _backward():
@@ -122,7 +135,8 @@ class Value:
 
     def sigmoid(self):
         s = 1 / (1 + np.exp(-self.data))
-        out = Value(s, _children=(self,), _op='sigmoid', label=f'sigmoid({self.label})' if self.label else '')
+
+        out = Value(float(s), _children=(self,), _op='sigmoid', label=f'sigmoid({self.label})' if self.label else '')
         out.require_grad = self.require_grad
 
         def _backward():
@@ -148,8 +162,7 @@ class Value:
         # go one variable at a time and apply the chain rule to get its gradient
         self.grad = 1
         for v in reversed(topo):
-            if v.require_grad:
-                v._backward()
+            v._backward()
 
     def __neg__(self): # -self
         return self * -1
